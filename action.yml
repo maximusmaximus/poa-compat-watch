@@ -1,0 +1,83 @@
+name: poa-compat-watch
+description: Check a project against the live Proof of Agent (PoA) core; update pins and open a pull request when it moves.
+branding:
+  icon: refresh-cw
+  color: green
+inputs:
+  config:
+    description: Path to the project's poa-compat.json
+    default: poa-compat.json
+  github-token:
+    description: Token used to push the update branch and open the pull request. Pull requests opened with the default GITHUB_TOKEN do not start other workflows; see the README.
+    default: ${{ github.token }}
+  auto-merge-when:
+    description: "never | breaking. With breaking, auto-merge (squash) is enabled only when the app cannot work on the current core, only pins moved, and every configured test passed."
+    default: never
+  dispatch-workflow:
+    description: Optional workflow file (e.g. ci.yml) to start on the update branch with workflow_dispatch, so checks run even when the pull request was opened with GITHUB_TOKEN.
+    default: ''
+  node-version:
+    description: Node.js version for the CLI and the project's tests
+    default: '22'
+  commit-name:
+    description: Commit author name for update commits
+    default: poa-compat
+  commit-email:
+    description: Commit author email for update commits
+    default: poa-compat@users.noreply.github.com
+outputs:
+  classification:
+    description: compatible | needs-update | breaking
+    value: ${{ steps.check.outputs.classification }}
+  pr-url:
+    description: URL of the opened or updated pull request, if any
+    value: ${{ steps.pr.outputs.pr-url }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+    - id: check
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+      run: |
+        set +e
+        node "$GITHUB_ACTION_PATH/bin/poa-compat.mjs" check --config "$CONFIG"
+        code=$?
+        echo "code=$code" >> "$GITHUB_OUTPUT"
+        case "$code" in
+          0|10|20) exit 0 ;;
+          2) echo "::warning::PoA network unavailable; will retry on the next run"; exit 0 ;;
+          *) exit "$code" ;;
+        esac
+    - id: update
+      if: steps.check.outputs.code == '10' || steps.check.outputs.code == '20'
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+      run: |
+        set +e
+        node "$GITHUB_ACTION_PATH/bin/poa-compat.mjs" update --config "$CONFIG"
+        code=$?
+        echo "code=$code" >> "$GITHUB_OUTPUT"
+        # 3 = tests failed: still open the pull request so a person can look.
+        case "$code" in 0|3|10|20) exit 0 ;; *) exit "$code" ;; esac
+    - id: pr
+      if: steps.update.outcome == 'success'
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        AUTO_MERGE_WHEN: ${{ inputs.auto-merge-when }}
+        DISPATCH: ${{ inputs.dispatch-workflow }}
+        POA_COMPAT_GIT_NAME: ${{ inputs.commit-name }}
+        POA_COMPAT_GIT_EMAIL: ${{ inputs.commit-email }}
+      run: |
+        # Push with the same token that opens the pull request, so its events can start other workflows.
+        git config --local --unset-all http.https://github.com/.extraheader || true
+        gh auth setup-git
+        args=(pr --config "$CONFIG" --auto-merge-when "$AUTO_MERGE_WHEN")
+        if [ -n "$DISPATCH" ]; then args+=(--dispatch-workflow "$DISPATCH"); fi
+        node "$GITHUB_ACTION_PATH/bin/poa-compat.mjs" "${args[@]}"

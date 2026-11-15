@@ -1,0 +1,15 @@
+{
+  "name": "poa-compat-watch",
+  "version": "1.0.0",
+  "description": "Watch the Proof of Agent (PoA) core for structural changes and keep projects built on it up to date.",
+  "type": "module",
+  "bin": { "poa-compat": "bin/poa-compat.mjs" },
+  "files": ["bin", "src", "action.yml", "README.md", "LICENSE"],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "secret-scan": "node scripts/secret-scan.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "keywords": ["poa", "proof-of-agent", "minepoa", "compatibility", "github-action"],
+  "license": "MIT"
+}

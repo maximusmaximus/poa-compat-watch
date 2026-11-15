@@ -1,0 +1,29 @@
+{
+  "project": "my-app",
+  "network": {
+    "origin": "https://minepoa.com",
+    "chainId": "poa-mainnet-1",
+    "clientMustMatch": "engine",
+    "expectFacts": { "chain_id": "poa-mainnet-1", "economics.K": 5 },
+    "expectStatus": { "K": 5 }
+  },
+  "failClosedOnPinMismatch": true,
+  "pins": [
+    { "tracks": "engine", "file": "wrangler.jsonc", "json": "vars.ENGINE_SHA256" },
+    { "tracks": "params", "file": "src/network.ts", "regex": "PARAMS_SHA256 = \"([0-9a-f]{64})\"" },
+    { "tracks": "engine", "file": "test/fixtures.mjs", "replaceAll": true }
+  ],
+  "surface": {
+    "snapshot": ".poa-compat/surface.json",
+    "uses": {
+      "exports": ["canonical", "txidOf", "signBody"],
+      "critical": ["canonical", "txidOf", "signBody"],
+      "txTypes": ["transfer"],
+      "fields": { "body": ["type", "from", "to", "amount", "memo", "nonce", "parents", "ts", "sig"] },
+      "constants": []
+    }
+  },
+  "evidence": ".poa-compat/evidence.json",
+  "tests": ["npm ci", "npm test"],
+  "pr": { "base": "main", "branch": "poa-compat/update", "titlePrefix": "PoA core update" }
+}
