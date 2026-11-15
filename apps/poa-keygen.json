@@ -1,0 +1,23 @@
+{
+  "id": "poa-keygen",
+  "name": "PoA Keygen",
+  "repo": "https://github.com/maximusmaximus/poa-keygen",
+  "pins": {
+    "K": {
+      "value": 5,
+      "onMismatch": "needs-update",
+      "files": [
+        "check.html (var K = 5 peer attestations for finality)"
+      ]
+    }
+  },
+  "clientBundleUrl": "https://minepoa.com/client/poa.mjs",
+  "note": "index.html generates keys offline (connect-src 'none') and mirrors poa.mjs address/base58/ed25519. check.html is a read-only balance page that GETs the public explorer and receipt APIs at https://minepoa.com only. It does not pin engine or params hashes.",
+  "publicEndpoints": [
+    "/client/poa.mjs",
+    "/api/explorer/address/:addr",
+    "/api/explorer/tx/:id",
+    "/api/receipt/:id"
+  ],
+  "capabilities": ["client-bundle", "explorer-tx", "receipt"]
+}

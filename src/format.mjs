@@ -108,6 +108,11 @@ export function formatText(report, checkedAt = new Date()) {
   return lines.join('\n') + '\n';
 }
 
+function publicPath(path) {
+  if (!path) return path;
+  return String(path).replace(/[0-9a-f]{64}/gi, ':id');
+}
+
 export function formatJson(report, checkedAt = new Date()) {
   const body = {
     classification: report.classification,
@@ -138,7 +143,10 @@ export function formatJson(report, checkedAt = new Date()) {
       : null,
     baseline: report.baseline,
     apps: report.apps,
-    warnings: report.warnings
+    warnings: (report.warnings || []).map((warning) => ({
+      ...warning,
+      path: warning.path ? publicPath(warning.path) : warning.path
+    }))
   };
   return JSON.stringify(body, null, 2) + '\n';
 }

@@ -69,7 +69,8 @@
       "name": "params",
       "required": true,
       "paths": [
-        "/chain/poa-mainnet-1/api/params"
+        "/chain/poa-mainnet-1/api/params",
+        "/api/params"
       ]
     },
     {
@@ -119,6 +120,46 @@
         "/api/txs"
       ],
       "note": "may return 503; poa-dice falls back to /api/explorer/txs"
+    },
+    {
+      "name": "epochs",
+      "required": false,
+      "paths": [
+        "/api/epochs"
+      ],
+      "note": "used by proof-floor and poa-agent-kit"
+    },
+    {
+      "name": "agents",
+      "required": false,
+      "paths": [
+        "/api/agents"
+      ],
+      "note": "used by proof-floor"
+    },
+    {
+      "name": "notices",
+      "required": false,
+      "paths": [
+        "/api/notices"
+      ],
+      "note": "used by proof-floor"
+    },
+    {
+      "name": "ballots",
+      "required": false,
+      "paths": [
+        "/api/ballots"
+      ],
+      "note": "used by proof-floor"
+    },
+    {
+      "name": "networks",
+      "required": false,
+      "paths": [
+        "/api/networks"
+      ],
+      "note": "used by proof-floor; may be absent"
     }
   ]
 }

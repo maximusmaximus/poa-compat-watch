@@ -1,0 +1,28 @@
+{
+  "id": "poa-agent-kit",
+  "name": "PoA Agent Kit",
+  "repo": "https://github.com/maximusmaximus/poa-agent-kit",
+  "pins": {
+    "chainId": {
+      "value": "poa-mainnet-1",
+      "onMismatch": "breaking",
+      "files": [
+        "bin/poa.py (MAINNET_CHAIN_ID, LEDGER_DEFAULT_BRANCH)"
+      ]
+    }
+  },
+  "note": "Operator toolkit. Default node is https://minepoa.com (POA_BASE_URL). It talks to public explorer/receipt/epochs routes and to key-authenticated /api/hosted/* routes, which this checker does not probe.",
+  "publicEndpoints": [
+    "/api/epochs",
+    "/api/receipt/:id",
+    "/api/explorer/tx/:id"
+  ],
+  "authenticatedEndpoints": [
+    "/api/hosted/challenge",
+    "/api/hosted/me",
+    "/api/hosted/answer",
+    "/api/hosted/grade"
+  ],
+  "capabilities": ["receipt", "explorer-tx"],
+  "optionalCapabilities": ["epochs"]
+}

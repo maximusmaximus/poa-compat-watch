@@ -80,6 +80,7 @@ function coreRoutes(overrides = {}) {
     '/chain/poa-mainnet-1/api/status': json(200, chainStatus),
     '/api/status': json(200, rootStatus),
     '/chain/poa-mainnet-1/api/params': json(200, params),
+    '/api/params': json(200, params),
     '/chain/poa-mainnet-1/client/poa.mjs': text(200, bundle),
     '/client/poa.mjs': text(200, bundle),
     '/api/explorer/txs?type=transfer&limit=50': json(200, [{ id: txid, type: 'transfer' }]),
@@ -180,6 +181,19 @@ describe('fetchLive', () => {
     assert.equal(live.ok, true);
     assert.equal(live.transferObserved, false);
     assert.equal(live.receiptObserved, true);
+  });
+
+  it('reads decimals from /api/params when the chain params path fails', async () => {
+    const fetchImpl = router(
+      coreRoutes({
+        '/chain/poa-mainnet-1/api/params': json(503, { error: 'busy' })
+      })
+    );
+    const live = await fetchLive({ fetchImpl, sleep, retries: 1 });
+    assert.equal(live.ok, true);
+    assert.equal(live.decimals, 6);
+    assert.equal(live.endpoints['/api/params'].ok, true);
+    assert.equal(live.endpoints['/chain/poa-mainnet-1/api/params'].ok, false);
   });
 });
 

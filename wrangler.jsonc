@@ -1,0 +1,17 @@
+{
+  "$schema": "https://unpkg.com/wrangler@4.162.0/config-schema.json",
+  "name": "poa-compat-watch",
+  "main": "worker/index.mjs",
+  "compatibility_date": "2026-11-15",
+  "workers_dev": true,
+  "preview_urls": false,
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "RESULTS",
+      "id": "eba494dbd5cd4a1983ceb7c6c9e5a8a3"
+    }
+  ]
+}

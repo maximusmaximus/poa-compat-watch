@@ -169,6 +169,8 @@ export function compareBaseline(live, baseline) {
   for (const cap of baseline.capabilities || []) {
     const status = capabilityStatus(live, cap);
     if (status.ok) continue;
+    const observed = status.hits.some((hit) => hit.row);
+    if (!observed) continue;
     if (status.persistentFail && status.required && !status.flaky) {
       classification = worse(classification, 'needs-update');
       items.push({

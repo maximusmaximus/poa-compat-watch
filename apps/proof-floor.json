@@ -1,0 +1,37 @@
+{
+  "id": "proof-floor",
+  "name": "Proof Floor",
+  "repo": "https://github.com/maximusmaximus/proof-floor",
+  "pins": {
+    "chainId": {
+      "value": "poa-mainnet-1",
+      "onMismatch": "breaking",
+      "files": [
+        "src/lib/poa/upstream.ts uses the live node's default chain when present"
+      ]
+    }
+  },
+  "note": "Operator console (poa.grok.me). Public GETs go to https://minepoa.com via src/lib/poa/upstream.ts. Hosted routes under /api/hosted/* require an operator key and are not probed by this checker.",
+  "publicEndpoints": [
+    "/api/status",
+    "/api/epochs",
+    "/api/agents",
+    "/api/notices",
+    "/api/ballots",
+    "/api/networks",
+    "/api/explorer/txs",
+    "/api/explorer/address/:addr"
+  ],
+  "authenticatedEndpoints": [
+    "/api/hosted/challenge",
+    "/api/hosted/me",
+    "/api/hosted/assignments",
+    "/api/hosted/answer",
+    "/api/hosted/mine",
+    "/api/hosted/grade",
+    "/api/hosted/vote",
+    "/api/hosted/register"
+  ],
+  "capabilities": ["explorer-txs", "root-status"],
+  "optionalCapabilities": ["epochs", "agents", "notices", "ballots", "networks"]
+}

@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 export const DEFAULT_SOURCE = 'https://minepoa.com';
 export const DEFAULT_CHAIN = 'poa-mainnet-1';
 export const DEFAULT_RETRIES = 3;
@@ -17,8 +15,14 @@ function joinUrl(source, path) {
   return origin(source) + (path.startsWith('/') ? path : `/${path}`);
 }
 
-function sha256(buf) {
-  return createHash('sha256').update(buf).digest('hex');
+/** SHA-256 hex via Web Crypto (Node 20+ and Cloudflare Workers). Never executes the bytes. */
+export async function sha256hex(bytes) {
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const digest = await crypto.subtle.digest('SHA-256', view);
+  const hash = new Uint8Array(digest);
+  let out = '';
+  for (const b of hash) out += b.toString(16).padStart(2, '0');
+  return out;
 }
 
 function isObject(value) {
@@ -26,8 +30,8 @@ function isObject(value) {
 }
 
 function parseJson(buf) {
-  const text = Buffer.from(buf).toString('utf8');
-  return JSON.parse(text);
+  const view = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  return JSON.parse(new TextDecoder().decode(view));
 }
 
 /**
@@ -43,23 +47,30 @@ export async function request(url, options = {}) {
 
   for (let i = 0; i < retries; i++) {
     const attempts = i + 1;
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), timeoutMs);
+    let timer = null;
+    let signal;
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      signal = AbortSignal.timeout(timeoutMs);
+    } else {
+      const ac = new AbortController();
+      timer = setTimeout(() => ac.abort(), timeoutMs);
+      signal = ac.signal;
+    }
     try {
-      const res = await fetchImpl(url, { method: 'GET', redirect: 'manual', signal: ac.signal });
+      const res = await fetchImpl(url, { method: 'GET', redirect: 'manual', signal });
       const status = res.status;
       if (status >= 300 && status < 400) {
         last = { ok: false, status, url, attempts, error: 'redirect-refused' };
         return last;
       }
-      const bytes = Buffer.from(await res.arrayBuffer());
+      const bytes = new Uint8Array(await res.arrayBuffer());
       last = {
         ok: status >= 200 && status < 300,
         status,
         url,
         attempts,
         bytes,
-        sha256: sha256(bytes),
+        sha256: await sha256hex(bytes),
         contentType: res.headers?.get?.('content-type') || ''
       };
       if (last.ok || !RETRY_STATUSES.has(status)) return last;
@@ -101,8 +112,9 @@ function warnUnavailable(warnings, path, result, persistent) {
   });
 }
 
-async function getPath(source, path, endpoints, warnings, options) {
+async function getPath(source, path, endpoints, warnings, options, raw) {
   const result = await request(joinUrl(source, path), options);
+  if (raw) raw[path] = result;
   recordEndpoint(endpoints, path, result);
   if (!result.ok) {
     const persistent = !result.ok && (result.attempts || 0) >= (options.retries ?? DEFAULT_RETRIES);
@@ -111,14 +123,54 @@ async function getPath(source, path, endpoints, warnings, options) {
   return result;
 }
 
-async function firstOk(source, paths, endpoints, warnings, options) {
-  let last = null;
-  for (const path of paths) {
-    const result = await getPath(source, path, endpoints, warnings, options);
-    last = { path, result };
-    if (result.ok) return last;
-  }
-  return last;
+/** Resolve as soon as one path succeeds; leftover probes stay in `pending`. */
+function firstSettledOk(jobs) {
+  return new Promise((resolve, reject) => {
+    if (jobs.length === 0) {
+      resolve(null);
+      return;
+    }
+    let remaining = jobs.length;
+    let last = null;
+    let settled = false;
+    for (const job of jobs) {
+      Promise.resolve(job).then(
+        (hit) => {
+          last = hit;
+          if (!settled && hit?.result?.ok) {
+            settled = true;
+            resolve(hit);
+          }
+          remaining -= 1;
+          if (!settled && remaining === 0) {
+            settled = true;
+            resolve(last);
+          }
+        },
+        (err) => {
+          remaining -= 1;
+          if (!settled && remaining === 0) {
+            settled = true;
+            reject(err);
+          }
+        }
+      );
+    }
+  });
+}
+
+function track(pending, job) {
+  if (pending) pending.push(job);
+  return job;
+}
+
+async function firstOk(source, paths, endpoints, warnings, options, pending, raw) {
+  const jobs = paths.map(async (path) => {
+    const result = await getPath(source, path, endpoints, warnings, options, raw);
+    return { path, result };
+  });
+  for (const job of jobs) track(pending, job);
+  return firstSettledOk(jobs);
 }
 
 function jsonFrom(result) {
@@ -143,31 +195,43 @@ export async function fetchLive(options = {}) {
   const chainId = options.chainId || DEFAULT_CHAIN;
   const warnings = [];
   const endpoints = {};
+  const raw = {};
+  const pending = [];
   const req = { ...options, fetchImpl: options.fetchImpl || globalThis.fetch };
 
   const factsPaths = [`/chain/${chainId}/api/network-facts`, '/api/network-facts'];
   const statusPaths = [`/chain/${chainId}/api/status`, '/api/status'];
-  const paramsPaths = [`/chain/${chainId}/api/params`];
+  const paramsPaths = [`/chain/${chainId}/api/params`, '/api/params'];
   const clientPaths = [`/chain/${chainId}/client/poa.mjs`, '/client/poa.mjs'];
 
-  const [factsHit, statusHit, paramsHit, primaryClient] = await Promise.all([
-    firstOk(source, factsPaths, endpoints, warnings, req),
-    firstOk(source, statusPaths, endpoints, warnings, req),
-    firstOk(source, paramsPaths, endpoints, warnings, req),
-    getPath(source, clientPaths[0], endpoints, warnings, req)
-  ]);
-  const fallbackClient = primaryClient.ok
-    ? await getPath(source, clientPaths[1], endpoints, warnings, req)
-    : (await firstOk(source, clientPaths.slice(1), endpoints, warnings, req))?.result;
+  const factsHitP = firstOk(source, factsPaths, endpoints, warnings, req, pending, raw);
+  const statusHitP = firstOk(source, statusPaths, endpoints, warnings, req, pending, raw);
+  const paramsHitP = firstOk(source, paramsPaths, endpoints, warnings, req, pending, raw);
+  const clientJobs = clientPaths.map((path) =>
+    track(
+      pending,
+      getPath(source, path, endpoints, warnings, req, raw).then((result) => ({ path, result }))
+    )
+  );
+  const transferListP = track(
+    pending,
+    getPath(source, '/api/explorer/txs?type=transfer&limit=50', endpoints, warnings, req, raw)
+  );
+  const allListP = track(pending, getPath(source, '/api/explorer/txs', endpoints, warnings, req, raw));
+  track(pending, getPath(source, '/api/txs', endpoints, warnings, req, raw));
+  for (const path of ['/api/epochs', '/api/agents', '/api/notices', '/api/ballots', '/api/networks']) {
+    track(pending, getPath(source, path, endpoints, warnings, req, raw));
+  }
 
+  const factsHit = await factsHitP;
   const factsJson = jsonFrom(factsHit?.result);
-  const statusJson = jsonFrom(statusHit?.result);
-  const paramsJson = jsonFrom(paramsHit?.result);
 
   if (factsHit?.result?.ok && factsJson?.__parseError) {
+    await Promise.all(pending);
     return { ok: false, error: 'network-facts response is not valid JSON', source, endpoints, warnings };
   }
   if (!factsHit?.result?.ok || !isObject(factsJson)) {
+    await Promise.all(pending);
     return {
       ok: false,
       error: 'unable to read network-facts from the live node after retries',
@@ -183,10 +247,53 @@ export async function fetchLive(options = {}) {
   const factsChainId = typeof chainFacts.chain_id === 'string' ? chainFacts.chain_id : null;
   const factsK = Number.isInteger(chainFacts.economics?.K) ? chainFacts.economics.K : null;
 
-  // Re-fetch the other facts path if firstOk stopped early, so we can compare.
+  const [transferListHit, allListHit] = await Promise.all([transferListP, allListP]);
+
+  const transferList = jsonFrom(transferListHit);
+  const allList = jsonFrom(allListHit);
+  const transfers = Array.isArray(transferList) ? transferList : [];
+  const listed = Array.isArray(allList) ? allList : [];
+  const transferRow = transfers.find((row) => isObject(row) && row.type === 'transfer')
+    || listed.find((row) => isObject(row) && row.type === 'transfer');
+  const sampleRow = transferRow || listed.find((row) => isObject(row) && typeof row.id === 'string');
+  const sampleId = sampleRow && /^[0-9a-f]{64}$/i.test(sampleRow.id) ? sampleRow.id : null;
+
+  let receiptHitP = null;
+  let explorerHitP = null;
+  if (sampleId) {
+    receiptHitP = firstOk(
+      source,
+      [`/api/receipt/${sampleId}`, `/chain/${chainId}/api/receipt/${sampleId}`],
+      endpoints,
+      warnings,
+      req,
+      pending,
+      raw
+    );
+    explorerHitP = firstOk(
+      source,
+      [`/api/explorer/tx/${sampleId}`, `/chain/${chainId}/api/explorer/tx/${sampleId}`],
+      endpoints,
+      warnings,
+      req,
+      pending,
+      raw
+    );
+  }
+
+  const [statusHit, paramsHit] = await Promise.all([statusHitP, paramsHitP]);
+  const [receiptHit, explorerHit] = await Promise.all([
+    receiptHitP || Promise.resolve(null),
+    explorerHitP || Promise.resolve(null)
+  ]);
+  await Promise.all(pending);
+
+  const clientHits = await Promise.all(clientJobs);
+  const paramsJson = jsonFrom(paramsHit?.result);
+
   const otherFactsPath = factsPaths.find((p) => p !== factsHit.path);
-  if (otherFactsPath && !endpoints[otherFactsPath]) {
-    const other = await getPath(source, otherFactsPath, endpoints, warnings, req);
+  if (otherFactsPath && raw[otherFactsPath]) {
+    const other = raw[otherFactsPath];
     if (other.ok) {
       const otherJson = jsonFrom(other);
       if (isObject(otherJson) && !otherJson.__parseError) {
@@ -203,16 +310,8 @@ export async function fetchLive(options = {}) {
 
   const chainStatusPath = `/chain/${chainId}/api/status`;
   const rootStatusPath = '/api/status';
-  let chainStatus = statusHit?.path === chainStatusPath ? statusJson : null;
-  let rootStatus = statusHit?.path === rootStatusPath ? statusJson : null;
-  if (!chainStatus && endpoints[chainStatusPath] == null) {
-    const extra = await getPath(source, chainStatusPath, endpoints, warnings, req);
-    chainStatus = jsonFrom(extra);
-  }
-  if (!rootStatus && endpoints[rootStatusPath] == null) {
-    const extra = await getPath(source, rootStatusPath, endpoints, warnings, req);
-    rootStatus = jsonFrom(extra);
-  }
+  const chainStatus = jsonFrom(raw[chainStatusPath] || (statusHit?.path === chainStatusPath ? statusHit.result : null));
+  const rootStatus = jsonFrom(raw[rootStatusPath] || (statusHit?.path === rootStatusPath ? statusHit.result : null));
   if (isObject(chainStatus) && !chainStatus.__parseError && isObject(rootStatus) && !rootStatus.__parseError) {
     const sameK = chainStatus.K === rootStatus.K;
     const sameEpoch = chainStatus.epochs_closed === rootStatus.epochs_closed;
@@ -236,9 +335,7 @@ export async function fetchLive(options = {}) {
     warnings.push({ code: 'PARAMS_INVALID_JSON', path: paramsHit.path });
   }
 
-  const clientResults = [];
-  if (primaryClient.ok) clientResults.push({ path: clientPaths[0], result: primaryClient });
-  if (fallbackClient?.ok) clientResults.push({ path: clientPaths[1], result: fallbackClient });
+  const clientResults = clientHits.filter((hit) => hit.result?.ok);
   const clientSha = clientResults[0]?.result.sha256 || null;
   if (clientResults.length >= 2 && clientResults[0].result.sha256 !== clientResults[1].result.sha256) {
     warnings.push({ code: 'CLIENT_BUNDLE_MISMATCH', detail: 'client bundle hashes disagree across URLs' });
@@ -250,16 +347,6 @@ export async function fetchLive(options = {}) {
     });
   }
 
-  // Sample explorer list, then a receipt and explorer tx. Prefer a transfer if one is listed.
-  const transferListHit = await getPath(
-    source,
-    '/api/explorer/txs?type=transfer&limit=50',
-    endpoints,
-    warnings,
-    req
-  );
-  const allListHit = await getPath(source, '/api/explorer/txs', endpoints, warnings, req);
-
   let receiptFields = [];
   let explorerTxFields = [];
   let explorerBodyFields = [];
@@ -269,48 +356,25 @@ export async function fetchLive(options = {}) {
   let receiptObserved = false;
   let explorerObserved = false;
 
-  const transferList = jsonFrom(transferListHit);
-  const allList = jsonFrom(allListHit);
-  const transfers = Array.isArray(transferList) ? transferList : [];
-  const listed = Array.isArray(allList) ? allList : [];
-  const transferRow = transfers.find((row) => isObject(row) && row.type === 'transfer')
-    || listed.find((row) => isObject(row) && row.type === 'transfer');
-  const sampleRow = transferRow || listed.find((row) => isObject(row) && typeof row.id === 'string');
-  const sampleId = sampleRow && /^[0-9a-f]{64}$/i.test(sampleRow.id) ? sampleRow.id : null;
-
-  if (sampleId) {
-    const receiptHit = await firstOk(
-      source,
-      [`/api/receipt/${sampleId}`, `/chain/${chainId}/api/receipt/${sampleId}`],
-      endpoints,
-      warnings,
-      req
-    );
-    const receiptJson = jsonFrom(receiptHit?.result);
-    if (isObject(receiptJson) && !receiptJson.__parseError) {
-      receiptFields = fieldsOf(receiptJson);
-      receiptObserved = true;
-    }
-    const explorerHit = await firstOk(
-      source,
-      [`/api/explorer/tx/${sampleId}`, `/chain/${chainId}/api/explorer/tx/${sampleId}`],
-      endpoints,
-      warnings,
-      req
-    );
-    const explorerJson = jsonFrom(explorerHit?.result);
-    if (isObject(explorerJson) && !explorerJson.__parseError) {
-      explorerTxFields = fieldsOf(explorerJson);
-      explorerObserved = true;
-      explorerType = typeof explorerJson.type === 'string' ? explorerJson.type : null;
-      if (isObject(explorerJson.body)) {
-        explorerBodyFields = fieldsOf(explorerJson.body);
-        if (explorerJson.body.type === 'transfer' || explorerType === 'transfer') {
-          transferBodyFields = explorerBodyFields;
-          transferObserved = true;
-        }
+  const receiptJson = jsonFrom(receiptHit?.result);
+  if (isObject(receiptJson) && !receiptJson.__parseError) {
+    receiptFields = fieldsOf(receiptJson);
+    receiptObserved = true;
+  }
+  const explorerJson = jsonFrom(explorerHit?.result);
+  if (isObject(explorerJson) && !explorerJson.__parseError) {
+    explorerTxFields = fieldsOf(explorerJson);
+    explorerObserved = true;
+    explorerType = typeof explorerJson.type === 'string' ? explorerJson.type : null;
+    if (isObject(explorerJson.body)) {
+      explorerBodyFields = fieldsOf(explorerJson.body);
+      if (explorerJson.body.type === 'transfer' || explorerType === 'transfer') {
+        transferBodyFields = explorerBodyFields;
+        transferObserved = true;
       }
     }
+  }
+  if (sampleId) {
     // Record template paths in endpoints for capability checks.
     for (const [template, concrete] of [
       ['/api/receipt/:id', `/api/receipt/${sampleId}`],
@@ -327,9 +391,6 @@ export async function fetchLive(options = {}) {
       detail: 'explorer listing had no usable tx id; receipt and explorer tx shapes were not observed'
     });
   }
-
-  // Optional flaky parents endpoint — fetched last so a 503 does not block core reads.
-  await getPath(source, '/api/txs', endpoints, warnings, req);
 
   const decimals = Number.isInteger(params?.decimals) ? params.decimals : null;
   const K =
