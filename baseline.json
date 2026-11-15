@@ -1,0 +1,124 @@
+{
+  "source": "https://minepoa.com",
+  "chainId": "poa-mainnet-1",
+  "engineSha256": "92658c61bc75d24572b8eef6182af27436a4f00019854718dcf0de3c6d2b54f6",
+  "paramsSha256": "bc823648e0efa9343e62b153a61d74180a32dca8581f1856376616c1e8e0a15f",
+  "clientBundleSha256": "92658c61bc75d24572b8eef6182af27436a4f00019854718dcf0de3c6d2b54f6",
+  "clientBundleUrls": [
+    "/chain/poa-mainnet-1/client/poa.mjs",
+    "/client/poa.mjs"
+  ],
+  "K": 5,
+  "decimals": 6,
+  "receiptFields": [
+    "txid",
+    "status",
+    "from",
+    "type",
+    "valid_in_open_window",
+    "checkpoint_covered",
+    "source",
+    "note",
+    "next_nonce"
+  ],
+  "explorerTxFields": [
+    "id",
+    "type",
+    "from_addr",
+    "to_addr",
+    "amount",
+    "epoch",
+    "ts",
+    "memo",
+    "atts",
+    "final",
+    "body",
+    "as_of",
+    "checkpoint_height",
+    "source"
+  ],
+  "transferBodyFields": [
+    "type",
+    "from",
+    "to",
+    "amount",
+    "memo",
+    "nonce",
+    "parents",
+    "ts",
+    "cid",
+    "sig"
+  ],
+  "capabilities": [
+    {
+      "name": "network-facts",
+      "required": true,
+      "paths": [
+        "/chain/poa-mainnet-1/api/network-facts",
+        "/api/network-facts"
+      ]
+    },
+    {
+      "name": "chain-status",
+      "required": true,
+      "paths": [
+        "/chain/poa-mainnet-1/api/status"
+      ]
+    },
+    {
+      "name": "params",
+      "required": true,
+      "paths": [
+        "/chain/poa-mainnet-1/api/params"
+      ]
+    },
+    {
+      "name": "client-bundle",
+      "required": true,
+      "paths": [
+        "/chain/poa-mainnet-1/client/poa.mjs",
+        "/client/poa.mjs"
+      ]
+    },
+    {
+      "name": "explorer-txs",
+      "required": true,
+      "paths": [
+        "/api/explorer/txs"
+      ]
+    },
+    {
+      "name": "explorer-tx",
+      "required": true,
+      "paths": [
+        "/api/explorer/tx/:id",
+        "/chain/poa-mainnet-1/api/explorer/tx/:id"
+      ]
+    },
+    {
+      "name": "receipt",
+      "required": true,
+      "paths": [
+        "/api/receipt/:id",
+        "/chain/poa-mainnet-1/api/receipt/:id"
+      ]
+    },
+    {
+      "name": "root-status",
+      "required": false,
+      "paths": [
+        "/api/status"
+      ],
+      "note": "read-node v0.2 status schema differs from chain status (no chain_id, different tx counts)"
+    },
+    {
+      "name": "txs-parents",
+      "required": false,
+      "flaky": true,
+      "paths": [
+        "/api/txs"
+      ],
+      "note": "may return 503; poa-dice falls back to /api/explorer/txs"
+    }
+  ]
+}

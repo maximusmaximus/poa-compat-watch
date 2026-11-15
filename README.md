@@ -1,185 +1,81 @@
 # poa-compat-watch
 
-Keep projects built on [Proof of Agent (PoA)](https://minepoa.com) working when the PoA core changes.
+Read-only checker for the live [Proof of Agent](https://minepoa.com) network. It fetches current core values, compares them with a committed baseline and with the pins of [poa-domains](https://github.com/maximusmaximus/poa-domains) and [poa-dice](https://github.com/maximusmaximus/poa-dice), and classifies each app as **compatible**, **needs-update**, or **breaking**.
 
-`poa-compat` reads PoA's public network surface (network facts, node status, the signed release
-manifest and the official client bundle), compares it with what your project pins or relies on,
-and tells you whether you are **compatible**, **need an update**, or are **broken**. It can then
-rewrite your pins, record evidence, run your tests and open a pull request, with auto-merge only
-when the app cannot work until the update lands.
+No dependencies. Node.js 20 or newer. MIT licensed. The checker only makes GET requests. It hashes the official client bundle and never executes it. It does not sign or submit transactions, and it does not read or write wallets, keys, or secrets.
 
-No dependencies. Node.js 20 or newer. MIT licensed.
+## What it checks
 
-## Quick start
+Against `https://minepoa.com` (override with `--source`):
+
+- network-facts at `/chain/poa-mainnet-1/api/network-facts` and `/api/network-facts` (`chain_id`, `engine_sha256`, `params_sha256`, `K`)
+- status at `/chain/poa-mainnet-1/api/status` (and `/api/status` for comparison)
+- params at `/chain/poa-mainnet-1/api/params` (`decimals`, `K`)
+- the official client bundle at `/chain/poa-mainnet-1/client/poa.mjs` and `/client/poa.mjs` (sha256)
+- a sample receipt (`/api/receipt/:id` and the chain path) and explorer tx (`/api/explorer/tx/:id`), recording field names only
+- a transfer body field set when a transfer appears in the explorer listing
+- availability of the endpoints listed in `baseline.json`
+
+`baseline.json` is the known-good snapshot of those values, including the transfer body field set used by `poa.mjs` and poa-dice (`type`, `from`, `to`, `amount`, `memo`, `nonce`, `parents`, `ts`, `cid`, `sig`).
+
+`apps/poa-domains.json` records the engine and params hash pins and their file locations, the official client URL, accepted receipt shapes (legacy or slim), and the transfer body field set.
+
+`apps/poa-dice.json` records the chain id, 6-decimal amounts, transfer body field set, receipt fields (`status`, `next_nonce`, `checkpoint_covered`), and the endpoints it uses. It does not pin engine or params hashes.
+
+Classification:
+
+- **compatible** — live values match the baseline and the app's pins; extra receipt or explorer fields are allowed
+- **needs-update** — engine, params, or client-bundle hashes moved, or a required capability stayed down after retries, or the baseline field set is missing live fields, while wire identity (`chain_id`, `decimals`, required transfer/receipt fields) still holds
+- **breaking** — `chain_id` or `decimals` changed, an observed transfer body is missing required fields, or an app's required receipt shape no longer matches
+
+Busy or paused answers (HTTP 503, 429, 502, 504) are retried. A transient success after retry is not a failure. A persistent 503 on a flaky or fallback path (for example `/api/txs`) is an availability warning, not a break. If every path for a required capability stays down after retries, the baseline is **needs-update**. If network-facts cannot be read at all, the checker exits 3.
+
+Root `/api/status` currently uses a different schema and tx counts than chain status. The checker reports that as a warning and uses chain status as the primary status document.
+
+## How to run
+
+From this repository:
 
 ```sh
-npx github:maximusmaximus/poa-compat-watch status        # what is PoA running right now?
-npx github:maximusmaximus/poa-compat-watch check          # uses ./poa-compat.json
+node src/check.mjs
+node src/check.mjs --json
 ```
 
-`status` prints the live engine hash, params hash, client bundle sha256, release name, network id
-and epoch. It retries busy (503) answers and works without a config file.
+Equivalent npm scripts: `npm run check` and `npm run check:json`.
 
-## Commands
-
-| Command | What it does |
-| --- | --- |
-| `status [--json] [--pinned <engine>]` | Live engine, params, client sha256, release, network id/epoch. With `--pinned`, how many releases behind that engine is. |
-| `check [--config f] [--json]` | Compares live values with your declared pins and surface snapshot. |
-| `diff [--old f\|url\|snapshot] [--new f\|url] [--json]` | Structural diff of two client bundles. Defaults: your snapshot vs the live bundle. |
-| `update [--skip-tests] [--force]` | Rewrites pins to live values, refreshes the snapshot, appends evidence, runs your tests, writes a report. |
-| `pr [--auto-merge-when never\|breaking] [--dispatch-workflow ci.yml] [--dry-run]` | Commits the update to one rolling branch and opens or updates a pull request with the report as its body. |
-| `snapshot [--bundle f]` | Records the surface of the live (or given) bundle as your baseline. |
+Useful options: `--source <url>`, `--baseline <file>`, `--apps <dir>`, `--retries <n>`, `--timeout <ms>`. `--fixture <file>` replays a saved live observation and does not use the network (this is how the tests drive the CLI).
 
 ### Exit codes
 
 | Code | Meaning |
 | --- | --- |
 | 0 | compatible |
-| 10 | needs update: hashes moved, nothing your project relies on broke |
-| 20 | breaking: a relied-on part of the surface changed, the network no longer matches your expectations, or a pin moved and your app refuses to run on unpinned values |
-| 1 | usage or config error, or an update was refused |
-| 2 | network unavailable |
-| 3 | `update` applied changes but a test failed |
+| 1 | needs-update |
+| 2 | breaking |
+| 3 | checker error (invalid baseline/apps, or the live node could not be read) |
 
-## What "structural change" means
+The process exit code is the most severe of the baseline and app results. Warnings do not change the exit code.
 
-`diff` and `check` read the client bundle as text (it is never executed) and extract:
+## How to update the baseline
 
-- **exports** and their parameter lists
-- **code fingerprints** of top-level functions (comments and whitespace ignored)
-- **transaction types** the bundle handles (`type === 'transfer'` and similar)
-- **field names** used on transaction bodies, receipts, checkpoints and params
-- **constants** (upper-case top-level values)
+1. Run `node src/check.mjs` and read the evidence (expected vs live).
+2. If the live values are accepted, write them into `baseline.json`:
 
-Each difference is graded for *your* project using the `uses` lists in your config:
+   ```sh
+   node src/check.mjs --write-baseline
+   ```
 
-- removed export, changed parameters, removed tx type or field, or a changed watched constant that
-  you rely on: **breaking**
-- any code change in a function you mark `critical` (for example `canonical`, `txidOf`, `signBody`):
-  **breaking**, because those define the wire format
-- a new trailing parameter, or code changes in other functions you use: **worth a look**
-- everything else: informational
+   This keeps existing capability metadata (required/flaky flags) and refreshes hashes, `K`, `decimals`, and observed field sets. It will not write a baseline if the live fetch failed. If no transfer was observed, the committed transfer field set is left unchanged.
+3. If an app pin is stale, update the corresponding file under `apps/` to the new live value.
+4. Review the diff, run `npm test`, and commit.
 
-Without a `uses` list, every removal counts as breaking.
-
-## Config: `poa-compat.json`
-
-```json
-{
-  "project": "my-app",
-  "network": {
-    "origin": "https://minepoa.com",
-    "chainId": "poa-mainnet-1",
-    "clientMustMatch": "engine",
-    "expectFacts": { "chain_id": "poa-mainnet-1", "economics.K": 5 },
-    "expectStatus": { "K": 5 }
-  },
-  "failClosedOnPinMismatch": true,
-  "pins": [
-    { "tracks": "engine", "file": "wrangler.jsonc", "json": "vars.ENGINE_SHA256" },
-    { "tracks": "params", "file": "src/network.ts", "regex": "PARAMS_SHA256 = \"([0-9a-f]{64})\"" },
-    { "tracks": "engine", "file": "test/fixtures.mjs", "replaceAll": true }
-  ],
-  "surface": {
-    "snapshot": ".poa-compat/surface.json",
-    "uses": {
-      "exports": ["canonical", "txidOf", "signBody"],
-      "critical": ["canonical", "txidOf", "signBody"],
-      "txTypes": ["transfer"],
-      "fields": { "body": ["type", "from", "to", "amount", "memo", "nonce", "parents", "ts", "sig"] },
-      "constants": []
-    }
-  },
-  "evidence": ".poa-compat/evidence.json",
-  "tests": ["npm ci", "npm test"],
-  "pr": { "base": "main", "branch": "poa-compat/update", "titlePrefix": "PoA core update" }
-}
-```
-
-- **pins**: every place your code stores a PoA value. `tracks` is `engine`, `params` or `client`.
-  Use `json` (dot path, JSONC comments are fine), `regex` (one capture group around the value) or
-  `replaceAll` (every occurrence of the previous value in that file, for fixtures and docs). All
-  pins of one kind must agree, or `check` reports it and `update` refuses.
-- **failClosedOnPinMismatch**: set when your app stops working if the network runs a different
-  engine or params than it pins (for example a payment path that halts). A moved pin is then
-  **breaking** rather than **needs update**.
-- **clientMustMatch**: `engine` (served bundle must hash to the advertised engine), `release`
-  (must match the release manifest `client_sha256`, the default) or `none`. `update` refuses to
-  write anything when this check fails.
-- **surface**: projects without pins can still watch the client surface; the snapshot records the
-  last bundle you were checked against.
-- **tests**: run in order from the project root after an update; the first failure stops the run.
-- **report**: where `update` writes the JSON and Markdown report (default: a temp directory).
-
-Run `poa-compat snapshot` once to record your baseline, and commit `.poa-compat/`.
-
-## GitHub Action
-
-`examples/poa-compat.yml` is a ready workflow: every 30 minutes and on demand it runs
-`check`, then `update` and `pr` when something moved.
-
-```yaml
-- uses: maximusmaximus/poa-compat-watch@<commit-sha>
-  with:
-    config: poa-compat.json
-    github-token: ${{ steps.app.outputs.token || github.token }}
-    auto-merge-when: breaking
-    dispatch-workflow: ci.yml
-```
-
-Auto-merge is enabled only when **all** of these hold:
-
-1. the project is classified **breaking** (users cannot use it on the current core),
-2. the client surface has no breaking change (so updating pins is enough; code changes always get
-   a human review),
-3. the network still matches your expectations and the served bundle passed the integrity check,
-4. at least one test command is configured and every one passed.
-
-Otherwise the pull request stays open for review, and any earlier auto-merge on it is turned off.
-GitHub then merges only after the repository's own required checks pass, so keep your normal CI
-required on the base branch. Auto-merge must be allowed in the repository settings.
-
-### Pull requests and CI
-
-GitHub does not start workflows for events caused by the default `GITHUB_TOKEN`. An update pull
-request opened with it gets no CI runs, and auto-merge will wait forever on required checks. Pick
-one:
-
-1. **GitHub App (recommended).** Create an App with *Contents* and *Pull requests* read/write,
-   install it on the repository, store its id as variable `POA_COMPAT_APP_ID` and its private key
-   as secret `POA_COMPAT_APP_PRIVATE_KEY`. The example workflow mints a short-lived token with
-   `actions/create-github-app-token`, and the action pushes and opens the pull request with it.
-2. **Fine-grained personal access token** limited to the repository with *Contents* and *Pull
-   requests* read/write, stored as a secret and passed as `github-token` (and to
-   `actions/checkout`).
-3. **Dispatch CI explicitly.** Keep `GITHUB_TOKEN`, add `workflow_dispatch:` to your CI workflow and
-   set `dispatch-workflow: ci.yml`. `workflow_dispatch` events are allowed from `GITHUB_TOKEN`, and
-   the resulting check runs attach to the update commit. With `GITHUB_TOKEN`, also enable
-   *Settings → Actions → General → Allow GitHub Actions to create and approve pull requests*.
-
-Tokens are only read from the environment (`GH_TOKEN`); they are never put on a command line,
-printed or written to reports. Test output in reports is passed through a redaction filter, and a
-secret scan runs on every changed file before anything is pushed.
-
-### Deploys
-
-Merging an update pull request runs whatever your repository does on merge. If production deploys
-wait for an environment approval, auto-merge does not deploy by itself; decide whether to keep that
-gate or let a merged compatibility update deploy automatically.
-
-## Adding a project
-
-1. Add `poa-compat.json` listing your pins, the parts of the client you rely on, and your tests.
-2. Run `poa-compat snapshot` and `poa-compat check`; commit `.poa-compat/`.
-3. Copy `examples/poa-compat.yml` to `.github/workflows/` and pick one of the CI options above.
-
-## Development
+## Tests
 
 ```sh
-npm test                      # unit and CLI tests against a local mock network
-node scripts/secret-scan.mjs  # run before every push
+npm test
 ```
+
+The tests use fixtures and a mock network only. They cover compatible, needs-update, breaking, availability-warning, and checker-error cases.
 
 ## License
 

@@ -1,0 +1,27 @@
+{
+  "id": "poa-dice",
+  "name": "POADICE",
+  "repo": "https://github.com/maximusmaximus/poa-dice",
+  "pins": {
+    "chainId": {
+      "value": "poa-mainnet-1",
+      "onMismatch": "breaking",
+      "files": [
+        "src/crypto-poa.mjs (MAINNET_CHAIN_ID)",
+        "src/minepoa-client.mjs (DEFAULT_CHAIN_ID)"
+      ]
+    },
+    "decimals": {
+      "value": 6,
+      "onMismatch": "breaking",
+      "files": [
+        "src/crypto-poa.mjs (MICROS_PER_POA, toMicros/fromMicros)"
+      ]
+    }
+  },
+  "receiptFields": ["status", "next_nonce", "checkpoint_covered"],
+  "transferBodyFields": ["type", "from", "to", "amount", "memo", "nonce", "parents", "ts", "cid", "sig"],
+  "note": "Does not pin engine_sha256 or params_sha256. Transfer body is the poa.mjs / poa-dice signed transfer shape. getTipParents falls back to /api/explorer/txs when /api/txs is unavailable.",
+  "capabilities": ["explorer-txs", "explorer-tx", "receipt"],
+  "optionalCapabilities": ["txs-parents"]
+}

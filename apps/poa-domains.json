@@ -1,0 +1,46 @@
+{
+  "id": "poa-domains",
+  "name": "PoA Domains",
+  "repo": "https://github.com/maximusmaximus/poa-domains",
+  "pins": {
+    "chainId": {
+      "value": "poa-mainnet-1",
+      "onMismatch": "breaking",
+      "files": [
+        "web/network-schema.js",
+        "web/live-network.js",
+        "cloudflare/escrow-codec.ts"
+      ]
+    },
+    "engineSha256": {
+      "value": "92658c61bc75d24572b8eef6182af27436a4f00019854718dcf0de3c6d2b54f6",
+      "onMismatch": "needs-update",
+      "files": [
+        "cloudflare/escrow-network.ts (MAINNET_ENGINE_SHA256)",
+        "wrangler.jsonc (POA_ESCROW_ENGINE_SHA256)"
+      ]
+    },
+    "paramsSha256": {
+      "value": "bc823648e0efa9343e62b153a61d74180a32dca8581f1856376616c1e8e0a15f",
+      "onMismatch": "needs-update",
+      "files": [
+        "cloudflare/escrow-network.ts (MAINNET_PARAMS_SHA256)",
+        "wrangler.jsonc (POA_ESCROW_PARAMS_SHA256)"
+      ]
+    }
+  },
+  "clientBundleUrl": "https://minepoa.com/chain/poa-mainnet-1/client/poa.mjs",
+  "receiptPolicy": "any-shape",
+  "receiptShapes": [
+    {
+      "name": "legacy",
+      "required": ["txid", "status", "from", "type"]
+    },
+    {
+      "name": "slim",
+      "required": ["txid", "status", "ts", "height"]
+    }
+  ],
+  "transferBodyFields": ["type", "from", "to", "amount", "memo", "nonce", "parents", "ts", "cid", "sig"],
+  "capabilities": ["network-facts", "chain-status", "params", "client-bundle", "explorer-txs", "explorer-tx", "receipt"]
+}
