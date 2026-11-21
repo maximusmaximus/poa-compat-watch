@@ -19,9 +19,43 @@
       ]
     }
   },
-  "receiptFields": ["status", "next_nonce", "checkpoint_covered"],
-  "transferBodyFields": ["type", "from", "to", "amount", "memo", "nonce", "parents", "ts", "cid", "sig"],
-  "note": "Does not pin engine_sha256 or params_sha256. Transfer body is the poa.mjs / poa-dice signed transfer shape. getTipParents falls back to /api/explorer/txs when /api/txs is unavailable.",
-  "capabilities": ["explorer-txs", "explorer-tx", "receipt"],
-  "optionalCapabilities": ["txs-parents"]
+  "receiptPolicy": "any-shape",
+  "receiptShapes": [
+    {
+      "name": "legacy",
+      "required": [
+        "status"
+      ]
+    },
+    {
+      "name": "slim",
+      "required": [
+        "txid",
+        "status",
+        "ts",
+        "height"
+      ]
+    }
+  ],
+  "transferBodyFields": [
+    "type",
+    "from",
+    "to",
+    "amount",
+    "memo",
+    "nonce",
+    "parents",
+    "ts",
+    "cid",
+    "sig"
+  ],
+  "note": "Does not pin engine_sha256 or params_sha256. Transfer body is the poa.mjs / poa-dice signed transfer shape. getTipParents falls back to /api/explorer/txs when /api/txs is unavailable. Receipts: only status is read (next_nonce is optional and falls back to the tx body nonce + 1; checkpoint_covered is not used), so legacy and slim receipts both work.",
+  "capabilities": [
+    "explorer-txs",
+    "explorer-tx",
+    "receipt"
+  ],
+  "optionalCapabilities": [
+    "txs-parents"
+  ]
 }
