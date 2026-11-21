@@ -72,25 +72,30 @@ describe('compare classifications', () => {
     assert.equal(row.live, 8);
   });
 
-  it('classifies a missing required dice receipt field as breaking', () => {
-    const fields = RECEIPT_FIELDS.filter((name) => name !== 'next_nonce');
+  it('classifies a dice receipt without status as breaking', () => {
+    const fields = RECEIPT_FIELDS.filter((name) => name !== 'status');
     const report = run(compatibleLive({ receiptFields: fields }));
     assert.equal(app(report, 'poa-dice').classification, 'breaking');
-    assert.equal(app(report, 'poa-domains').classification, 'compatible');
     assert.equal(report.classification, 'breaking');
     assert.equal(report.exitCode, 2);
   });
 
-  it('accepts the slim receipt shape for poa-domains and not for poa-dice', () => {
+  it('accepts a receipt without next_nonce for poa-dice (it falls back to the tx body nonce)', () => {
+    const fields = RECEIPT_FIELDS.filter((name) => name !== 'next_nonce' && name !== 'checkpoint_covered');
+    const report = run(compatibleLive({ receiptFields: fields }));
+    assert.equal(app(report, 'poa-dice').classification, 'compatible');
+    assert.equal(app(report, 'poa-domains').classification, 'compatible');
+  });
+
+  it('accepts the slim receipt shape for poa-domains and poa-dice', () => {
     const report = run(
       compatibleLive({
         receiptFields: ['txid', 'status', 'ts', 'height']
       })
     );
     assert.equal(app(report, 'poa-domains').classification, 'compatible');
-    assert.equal(app(report, 'poa-dice').classification, 'breaking');
+    assert.equal(app(report, 'poa-dice').classification, 'compatible');
     assert.equal(report.baseline.classification, 'needs-update');
-    assert.equal(report.classification, 'breaking');
   });
 
   it('classifies a transfer body missing cid as breaking when a transfer is observed', () => {
