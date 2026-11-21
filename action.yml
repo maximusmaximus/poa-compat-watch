@@ -11,7 +11,7 @@ inputs:
     description: Token used to push the update branch and open the pull request. Pull requests opened with the default GITHUB_TOKEN do not start other workflows; see the README.
     default: ${{ github.token }}
   auto-merge-when:
-    description: "never | breaking. With breaking, auto-merge (squash) is enabled only when the app cannot work on the current core, only pins moved, and every configured test passed."
+    description: "never | breaking | non-breaking-surface. With breaking, auto-merge (squash) is enabled only when the app cannot work on the current core, only pins moved, and every configured test passed."
     default: never
   dispatch-workflow:
     description: Optional workflow file (e.g. ci.yml) to start on the update branch with workflow_dispatch, so checks run even when the pull request was opened with GITHUB_TOKEN.

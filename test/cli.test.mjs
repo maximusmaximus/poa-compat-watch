@@ -231,3 +231,21 @@ test('secret scan and redaction', () => {
   assert.equal(scanText(`engine = "${'a'.repeat(64)}"`).length, 0);
   assert.ok(!redact(`Authorization: Bearer ${fake}`).includes(fake));
 });
+
+test('non-breaking-surface auto-merges needs-update without surface breaks, but never surface breaks', () => {
+  const base = {
+    check: {
+      classification: 'needs-update',
+      surface: { state: 'changed, nothing this project relies on broke', diff: { breaking: false, counts: { breaking: 0, review: 0, info: 1 }, changes: [] } },
+      expectationProblems: [],
+      integrityProblem: null,
+    },
+    tests: { configured: 1, passed: true },
+  };
+  assert.equal(autoMergeDecision(base, { when: 'non-breaking-surface' }).enable, true);
+  assert.equal(autoMergeDecision(base, { when: 'breaking' }).enable, false);
+  const broken = structuredClone(base);
+  broken.check.classification = 'breaking';
+  broken.check.surface.diff.breaking = true;
+  assert.equal(autoMergeDecision(broken, { when: 'non-breaking-surface' }).enable, false);
+});
