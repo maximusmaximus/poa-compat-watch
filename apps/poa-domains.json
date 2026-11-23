@@ -13,7 +13,7 @@
       ]
     },
     "engineSha256": {
-      "value": "a5feae08cbd1fabf38f15637ca113a03ffa2b5b9ce3107dca7cbc84cb8c229a2",
+      "value": "1560caead346fe3d66d0ce1a796c273c069dd7e6cdbcc73200428ed5f58997e5",
       "onMismatch": "needs-update",
       "files": [
         "cloudflare/escrow-network.ts (MAINNET_ENGINE_SHA256)",
