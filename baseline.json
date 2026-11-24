@@ -1,9 +1,9 @@
 {
   "source": "https://minepoa.com",
   "chainId": "poa-mainnet-1",
-  "engineSha256": "d6c58f54d698965bc7473403e417bb2963a0e4d1b9fc04099164317cce3f2cfe",
+  "engineSha256": "ba3d09028751868abe095249e0dc29dc7bf8444fffbba81355314b8f73b80339",
   "paramsSha256": "34345309000008c583a918944472a337928d043ffc299152285ee962a4f78cd1",
-  "clientBundleSha256": "d6c58f54d698965bc7473403e417bb2963a0e4d1b9fc04099164317cce3f2cfe",
+  "clientBundleSha256": "ba3d09028751868abe095249e0dc29dc7bf8444fffbba81355314b8f73b80339",
   "clientBundleUrls": [
     "/chain/poa-mainnet-1/client/poa.mjs",
     "/client/poa.mjs"
