@@ -13,7 +13,7 @@
       ]
     },
     "engineSha256": {
-      "value": "50464775560a94f49bbe4dae92b932c8fa7cf2c9239f2abdd31020d24c107511",
+      "value": "746671f800a25ec365912e887bdb78251bae4be52453d6bd0ae505e7287f14ed",
       "onMismatch": "needs-update",
       "files": [
         "cloudflare/escrow-network.ts (MAINNET_ENGINE_SHA256)",
@@ -21,7 +21,7 @@
       ]
     },
     "paramsSha256": {
-      "value": "552ccbddc8671c390dd3dfd1774e4e7d64345775f8c47ec2c7e5191738a98f71",
+      "value": "b6c2f50e33d07ac87897e18e7dc9c7737664f66044be83a7aa3cc92c83183c21",
       "onMismatch": "needs-update",
       "files": [
         "cloudflare/escrow-network.ts (MAINNET_PARAMS_SHA256)",
